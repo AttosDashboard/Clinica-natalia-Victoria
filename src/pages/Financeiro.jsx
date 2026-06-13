@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Plus, TrendingUp, TrendingDown, Wallet, AlertCircle, X } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, Wallet, AlertCircle, X, Pencil, Trash2 } from 'lucide-react'
 import { startOfMonth, endOfMonth, format } from 'date-fns'
 
 const abas = ['Análise', 'Lançamentos', 'Despesas']
@@ -16,8 +16,16 @@ export default function Financeiro() {
   const [pagamentos, setPagamentos] = useState([])
   const [despesas, setDespesas] = useState([])
   const [carregando, setCarregando] = useState(true)
+
+  // Modal de despesa (criar/editar)
   const [modalDespesa, setModalDespesa] = useState(false)
-  const [novaDespesa, setNovaDespesa] = useState({ descricao: '', valor: '', categoria: '', data_vencimento: '' })
+  const [despesaEditando, setDespesaEditando] = useState(null)
+  const [formDespesa, setFormDespesa] = useState({ descricao: '', valor: '', categoria: '', data_vencimento: '' })
+
+  // Modal de lançamento/pagamento (editar)
+  const [modalPagamento, setModalPagamento] = useState(false)
+  const [pagamentoEditando, setPagamentoEditando] = useState(null)
+  const [formPagamento, setFormPagamento] = useState({ valor: '', data_vencimento: '', metodo_pagamento: 'pix', status: 'pendente' })
 
   useEffect(() => {
     if (profile?.id) carregarDados()
@@ -46,16 +54,51 @@ export default function Financeiro() {
     setCarregando(false)
   }
 
-  async function adicionarDespesa(e) {
-    e.preventDefault()
-    if (!novaDespesa.descricao || !novaDespesa.valor || !novaDespesa.data_vencimento) return
-    await supabase.from('despesas').insert({
-      ...novaDespesa,
-      valor: Number(novaDespesa.valor),
-      profissional_id: profile.id
+  // ===== DESPESAS =====
+  function abrirNovaDespesa() {
+    setDespesaEditando(null)
+    setFormDespesa({ descricao: '', valor: '', categoria: '', data_vencimento: '' })
+    setModalDespesa(true)
+  }
+
+  function abrirEditarDespesa(d) {
+    setDespesaEditando(d)
+    setFormDespesa({
+      descricao: d.descricao,
+      valor: d.valor,
+      categoria: d.categoria ?? '',
+      data_vencimento: d.data_vencimento,
     })
-    setNovaDespesa({ descricao: '', valor: '', categoria: '', data_vencimento: '' })
+    setModalDespesa(true)
+  }
+
+  async function salvarDespesa(e) {
+    e.preventDefault()
+    if (!formDespesa.descricao || !formDespesa.valor || !formDespesa.data_vencimento) return
+
+    if (despesaEditando) {
+      await supabase.from('despesas').update({
+        descricao: formDespesa.descricao,
+        valor: Number(formDespesa.valor),
+        categoria: formDespesa.categoria,
+        data_vencimento: formDespesa.data_vencimento,
+      }).eq('id', despesaEditando.id)
+    } else {
+      await supabase.from('despesas').insert({
+        ...formDespesa,
+        valor: Number(formDespesa.valor),
+        profissional_id: profile.id
+      })
+    }
+
     setModalDespesa(false)
+    setDespesaEditando(null)
+    carregarDados()
+  }
+
+  async function excluirDespesa(id) {
+    if (!confirm('Excluir esta despesa?')) return
+    await supabase.from('despesas').delete().eq('id', id)
     carregarDados()
   }
 
@@ -64,9 +107,47 @@ export default function Financeiro() {
     carregarDados()
   }
 
+  // ===== LANÇAMENTOS (PAGAMENTOS) =====
+  function abrirEditarPagamento(p) {
+    setPagamentoEditando(p)
+    setFormPagamento({
+      valor: p.valor,
+      data_vencimento: p.data_vencimento,
+      metodo_pagamento: p.metodo_pagamento ?? 'pix',
+      status: p.status,
+    })
+    setModalPagamento(true)
+  }
+
+  async function salvarPagamento(e) {
+    e.preventDefault()
+    if (!pagamentoEditando) return
+
+    const payload = {
+      valor: Number(formPagamento.valor),
+      data_vencimento: formPagamento.data_vencimento,
+      metodo_pagamento: formPagamento.metodo_pagamento,
+      status: formPagamento.status,
+    }
+
+    if (formPagamento.status === 'pago' && pagamentoEditando.status !== 'pago') {
+      payload.data_pagamento = new Date().toISOString().slice(0, 10)
+    }
+
+    await supabase.from('pagamentos').update(payload).eq('id', pagamentoEditando.id)
+    setModalPagamento(false)
+    setPagamentoEditando(null)
+    carregarDados()
+  }
+
+  async function excluirPagamento(id) {
+    if (!confirm('Excluir este lançamento?')) return
+    await supabase.from('pagamentos').delete().eq('id', id)
+    carregarDados()
+  }
+
   // Cálculos
   const receitaTotal = pagamentos.reduce((acc, p) => acc + Number(p.valor), 0)
-  const receitaRecebida = pagamentos.filter(p => p.status === 'pago').reduce((acc, p) => acc + Number(p.valor), 0)
   const aReceber = pagamentos.filter(p => p.status !== 'pago').reduce((acc, p) => acc + Number(p.valor), 0)
   const despesaTotal = despesas.reduce((acc, d) => acc + Number(d.valor), 0)
   const despesaPaga = despesas.filter(d => d.status === 'pago').reduce((acc, d) => acc + Number(d.valor), 0)
@@ -87,7 +168,7 @@ export default function Financeiro() {
             Período: {format(periodo.inicio, 'dd/MM')} – {format(periodo.fim, 'dd/MM/yyyy')}
           </p>
         </div>
-        <button onClick={() => setModalDespesa(true)} className="btn-primary flex items-center gap-2">
+        <button onClick={abrirNovaDespesa} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
           Nova despesa
         </button>
@@ -163,21 +244,29 @@ export default function Financeiro() {
           ) : (
             <div className="divide-y divide-cream-100">
               {pagamentos.map(p => (
-                <div key={p.id} className="flex items-center justify-between py-3">
-                  <div>
+                <div key={p.id} className="flex items-center justify-between py-3 gap-3">
+                  <div className="min-w-0">
                     <p className="font-medium text-graphite-900">{p.pacientes?.nome_completo ?? 'Paciente'}</p>
                     <p className="text-sm text-graphite-300">
                       Venc. {format(new Date(p.data_vencimento), 'dd/MM/yyyy')} · {p.metodo_pagamento}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium text-graphite-900">{fmt(p.valor)}</p>
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${
-                      p.status === 'pago' ? 'bg-sage-100 text-sage-500' :
-                      p.status === 'atrasado' ? 'bg-rose-100 text-rose-700' : 'bg-cream-200 text-graphite-700'
-                    }`}>
-                      {p.status}
-                    </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <div className="text-right">
+                      <p className="font-medium text-graphite-900">{fmt(p.valor)}</p>
+                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${
+                        p.status === 'pago' ? 'bg-sage-100 text-sage-500' :
+                        p.status === 'atrasado' ? 'bg-rose-100 text-rose-700' : 'bg-cream-200 text-graphite-700'
+                      }`}>
+                        {p.status}
+                      </span>
+                    </div>
+                    <button onClick={() => abrirEditarPagamento(p)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                      <Pencil size={16} />
+                    </button>
+                    <button onClick={() => excluirPagamento(p.id)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -196,14 +285,14 @@ export default function Financeiro() {
           ) : (
             <div className="divide-y divide-cream-100">
               {despesas.map(d => (
-                <div key={d.id} className="flex items-center justify-between py-3">
-                  <div>
+                <div key={d.id} className="flex items-center justify-between py-3 gap-3">
+                  <div className="min-w-0">
                     <p className="font-medium text-graphite-900">{d.descricao}</p>
                     <p className="text-sm text-graphite-300">
                       Venc. {format(new Date(d.data_vencimento), 'dd/MM/yyyy')} {d.categoria && `· ${d.categoria}`}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     <p className="font-medium text-graphite-900">{fmt(d.valor)}</p>
                     {d.status === 'pendente' ? (
                       <button onClick={() => marcarDespesaPaga(d.id)} className="text-xs text-rose-700 hover:underline">
@@ -212,6 +301,12 @@ export default function Financeiro() {
                     ) : (
                       <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-sage-100 text-sage-500">paga</span>
                     )}
+                    <button onClick={() => abrirEditarDespesa(d)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                      <Pencil size={16} />
+                    </button>
+                    <button onClick={() => excluirDespesa(d.id)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -220,35 +315,87 @@ export default function Financeiro() {
         </div>
       )}
 
+      {/* Modal Despesa (criar/editar) */}
       {modalDespesa && (
         <div className="fixed inset-0 bg-graphite-900/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl max-w-md w-full">
             <div className="flex items-center justify-between p-6 border-b border-cream-200">
-              <h2 className="font-display text-xl">Nova despesa</h2>
-              <button onClick={() => setModalDespesa(false)} className="text-graphite-300 hover:text-graphite-700">
+              <h2 className="font-display text-xl">{despesaEditando ? 'Editar despesa' : 'Nova despesa'}</h2>
+              <button onClick={() => { setModalDespesa(false); setDespesaEditando(null) }} className="text-graphite-300 hover:text-graphite-700">
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={adicionarDespesa} className="p-6 space-y-4">
+            <form onSubmit={salvarDespesa} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-graphite-700 mb-1.5">Descrição</label>
-                <input type="text" required value={novaDespesa.descricao} onChange={e => setNovaDespesa({ ...novaDespesa, descricao: e.target.value })} className="input-field" />
+                <input type="text" required value={formDespesa.descricao} onChange={e => setFormDespesa({ ...formDespesa, descricao: e.target.value })} className="input-field" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-graphite-700 mb-1.5">Valor (R$)</label>
-                  <input type="number" step="0.01" required value={novaDespesa.valor} onChange={e => setNovaDespesa({ ...novaDespesa, valor: e.target.value })} className="input-field" />
+                  <input type="number" step="0.01" required value={formDespesa.valor} onChange={e => setFormDespesa({ ...formDespesa, valor: e.target.value })} className="input-field" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-graphite-700 mb-1.5">Vencimento</label>
-                  <input type="date" required value={novaDespesa.data_vencimento} onChange={e => setNovaDespesa({ ...novaDespesa, data_vencimento: e.target.value })} className="input-field" />
+                  <input type="date" required value={formDespesa.data_vencimento} onChange={e => setFormDespesa({ ...formDespesa, data_vencimento: e.target.value })} className="input-field" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-graphite-700 mb-1.5">Categoria</label>
-                <input type="text" placeholder="Ex: aluguel, materiais, marketing..." value={novaDespesa.categoria} onChange={e => setNovaDespesa({ ...novaDespesa, categoria: e.target.value })} className="input-field" />
+                <input type="text" placeholder="Ex: aluguel, materiais, marketing..." value={formDespesa.categoria} onChange={e => setFormDespesa({ ...formDespesa, categoria: e.target.value })} className="input-field" />
               </div>
-              <button type="submit" className="btn-primary w-full">Adicionar despesa</button>
+              <button type="submit" className="btn-primary w-full">{despesaEditando ? 'Salvar alterações' : 'Adicionar despesa'}</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pagamento (editar) */}
+      {modalPagamento && (
+        <div className="fixed inset-0 bg-graphite-900/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-cream-200">
+              <h2 className="font-display text-xl">Editar lançamento</h2>
+              <button onClick={() => { setModalPagamento(false); setPagamentoEditando(null) }} className="text-graphite-300 hover:text-graphite-700">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={salvarPagamento} className="p-6 space-y-4">
+              <p className="text-sm text-graphite-500">
+                Paciente: <span className="font-medium text-graphite-900">{pagamentoEditando?.pacientes?.nome_completo}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Valor (R$)</label>
+                  <input type="number" step="0.01" required value={formPagamento.valor} onChange={e => setFormPagamento({ ...formPagamento, valor: e.target.value })} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Vencimento</label>
+                  <input type="date" required value={formPagamento.data_vencimento} onChange={e => setFormPagamento({ ...formPagamento, data_vencimento: e.target.value })} className="input-field" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Método</label>
+                  <select value={formPagamento.metodo_pagamento} onChange={e => setFormPagamento({ ...formPagamento, metodo_pagamento: e.target.value })} className="input-field">
+                    <option value="pix">Pix</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Status</label>
+                  <select value={formPagamento.status} onChange={e => setFormPagamento({ ...formPagamento, status: e.target.value })} className="input-field">
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                    <option value="atrasado">Atrasado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" className="btn-primary w-full">Salvar alterações</button>
             </form>
           </div>
         </div>

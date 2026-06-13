@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
-  ArrowLeft, Trash2, Save, User, Calendar, Wallet, FileText, ClipboardList, Link2, Copy, Check
+  ArrowLeft, Trash2, Save, User, Calendar, Wallet, FileText, ClipboardList, Link2, Copy, Check, Pencil, X
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -280,6 +280,10 @@ function AbaFinanceiro({ pacienteId, profissionalId }) {
   const [carregando, setCarregando] = useState(true)
   const [novo, setNovo] = useState({ valor: '', data_vencimento: '', metodo_pagamento: 'pix', status: 'pendente' })
 
+  const [modalEditar, setModalEditar] = useState(false)
+  const [cobrancaEditando, setCobrancaEditando] = useState(null)
+  const [formEditar, setFormEditar] = useState({ valor: '', data_vencimento: '', metodo_pagamento: 'pix', status: 'pendente' })
+
   useEffect(() => { carregar() }, [pacienteId])
 
   async function carregar() {
@@ -307,6 +311,44 @@ function AbaFinanceiro({ pacienteId, profissionalId }) {
 
   async function marcarPago(pagId) {
     await supabase.from('pagamentos').update({ status: 'pago', data_pagamento: new Date().toISOString().slice(0, 10) }).eq('id', pagId)
+    carregar()
+  }
+
+  function abrirEditar(p) {
+    setCobrancaEditando(p)
+    setFormEditar({
+      valor: p.valor,
+      data_vencimento: p.data_vencimento,
+      metodo_pagamento: p.metodo_pagamento ?? 'pix',
+      status: p.status,
+    })
+    setModalEditar(true)
+  }
+
+  async function salvarEdicao(e) {
+    e.preventDefault()
+    if (!cobrancaEditando) return
+
+    const payload = {
+      valor: Number(formEditar.valor),
+      data_vencimento: formEditar.data_vencimento,
+      metodo_pagamento: formEditar.metodo_pagamento,
+      status: formEditar.status,
+    }
+
+    if (formEditar.status === 'pago' && cobrancaEditando.status !== 'pago') {
+      payload.data_pagamento = new Date().toISOString().slice(0, 10)
+    }
+
+    await supabase.from('pagamentos').update(payload).eq('id', cobrancaEditando.id)
+    setModalEditar(false)
+    setCobrancaEditando(null)
+    carregar()
+  }
+
+  async function excluirCobranca(id) {
+    if (!confirm('Excluir esta cobrança?')) return
+    await supabase.from('pagamentos').delete().eq('id', id)
     carregar()
   }
 
@@ -344,14 +386,14 @@ function AbaFinanceiro({ pacienteId, profissionalId }) {
         ) : (
           <div className="divide-y divide-cream-100">
             {pagamentos.map(p => (
-              <div key={p.id} className="flex items-center justify-between py-3">
-                <div>
+              <div key={p.id} className="flex items-center justify-between py-3 gap-3">
+                <div className="min-w-0">
                   <p className="font-medium text-graphite-900">R$ {Number(p.valor).toFixed(2).replace('.', ',')}</p>
                   <p className="text-sm text-graphite-300">
                     Venc. {format(new Date(p.data_vencimento), "dd/MM/yyyy")} · {p.metodo_pagamento}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${statusCor[p.status] ?? ''}`}>
                     {p.status}
                   </span>
@@ -360,12 +402,65 @@ function AbaFinanceiro({ pacienteId, profissionalId }) {
                       Marcar pago
                     </button>
                   )}
+                  <button onClick={() => abrirEditar(p)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                    <Pencil size={16} />
+                  </button>
+                  <button onClick={() => excluirCobranca(p.id)} className="text-graphite-300 hover:text-rose-700 p-1.5 rounded-lg hover:bg-rose-50 transition-colors">
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {modalEditar && (
+        <div className="fixed inset-0 bg-graphite-900/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-cream-200">
+              <h2 className="font-display text-xl">Editar cobrança</h2>
+              <button onClick={() => { setModalEditar(false); setCobrancaEditando(null) }} className="text-graphite-300 hover:text-graphite-700">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={salvarEdicao} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Valor (R$)</label>
+                  <input type="number" step="0.01" required value={formEditar.valor} onChange={e => setFormEditar({ ...formEditar, valor: e.target.value })} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Vencimento</label>
+                  <input type="date" required value={formEditar.data_vencimento} onChange={e => setFormEditar({ ...formEditar, data_vencimento: e.target.value })} className="input-field" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Método</label>
+                  <select value={formEditar.metodo_pagamento} onChange={e => setFormEditar({ ...formEditar, metodo_pagamento: e.target.value })} className="input-field">
+                    <option value="pix">Pix</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-graphite-700 mb-1.5">Status</label>
+                  <select value={formEditar.status} onChange={e => setFormEditar({ ...formEditar, status: e.target.value })} className="input-field">
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                    <option value="atrasado">Atrasado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" className="btn-primary w-full">Salvar alterações</button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
