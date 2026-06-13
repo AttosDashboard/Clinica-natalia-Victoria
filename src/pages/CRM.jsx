@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Plus, Pencil, Trash2, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, UserPlus } from 'lucide-react'
+import {
+  DndContext,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
 
 const statusOptions = [
-  { value: 'novo_lead', label: 'Novo lead' },
-  { value: 'lead_quente', label: 'Lead quente' },
-  { value: 'primeira_sessao_agendada', label: 'Primeira sessão agendada' },
-  { value: 'fechou', label: 'Fechou' },
+  { value: 'novo_lead', label: 'Novo Lead' },
+  { value: 'contato_feito', label: 'Contato Feito' },
+  { value: 'avaliacao_agendada', label: 'Avaliação Agendada' },
+  { value: 'primeira_sessao', label: 'Primeira Sessão' },
   { value: 'perdido', label: 'Perdido' },
 ]
 
@@ -25,8 +36,118 @@ const formInicial = {
   ultimo_contato: '',
 }
 
+function CardLead({ lead, fmt, abrirEditar, excluirLead, converterPaciente }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: lead.id,
+  })
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className="bg-cream-50 border border-cream-200 rounded-xl p-3 cursor-grab active:cursor-grabbing"
+    >
+      <div className="flex justify-between gap-2">
+        <div>
+          <p className="font-medium text-graphite-900">{lead.nome}</p>
+          <p className="text-xs text-graphite-500 mt-1">{lead.telefone || 'Sem telefone'}</p>
+          <p className="text-xs text-graphite-300 mt-1">{lead.origem || 'Sem origem'}</p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              abrirEditar(lead)
+            }}
+            className="text-graphite-300 hover:text-rose-700"
+          >
+            <Pencil size={15} />
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              excluirLead(lead.id)
+            }}
+            className="text-graphite-300 hover:text-rose-700"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+
+      <p className="font-semibold text-graphite-900 mt-3">
+        {fmt(lead.valor_estimado)}
+      </p>
+
+      {lead.status !== 'perdido' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            converterPaciente(lead)
+          }}
+          className="mt-3 w-full text-xs bg-sage-100 text-sage-500 rounded-lg px-3 py-2 font-medium hover:bg-sage-200 transition-colors flex items-center justify-center gap-1.5"
+        >
+          <UserPlus size={14} />
+          Converter em paciente
+        </button>
+      )}
+    </div>
+  )
+}
+
+function ColunaKanban({ coluna, leads, fmt, abrirEditar, excluirLead, converterPaciente }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: coluna.value,
+  })
+
+  const totalColuna = leads.reduce((acc, lead) => acc + Number(lead.valor_estimado || 0), 0)
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`card min-h-[460px] transition-colors ${isOver ? 'ring-2 ring-rose-300 bg-rose-50' : ''}`}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-semibold text-graphite-900">{coluna.label}</h3>
+          <p className="text-xs text-graphite-300">
+            {leads.length} lead(s) · {fmt(totalColuna)}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {leads.length === 0 ? (
+          <p className="text-xs text-graphite-300">Arraste leads para esta etapa.</p>
+        ) : (
+          leads.map((lead) => (
+            <CardLead
+              key={lead.id}
+              lead={lead}
+              fmt={fmt}
+              abrirEditar={abrirEditar}
+              excluirLead={excluirLead}
+              converterPaciente={converterPaciente}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function CRM() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [leads, setLeads] = useState([])
   const [busca, setBusca] = useState('')
   const [modal, setModal] = useState(false)
@@ -34,6 +155,14 @@ export default function CRM() {
   const [form, setForm] = useState(formInicial)
   const [carregando, setCarregando] = useState(true)
   const [visualizacao, setVisualizacao] = useState('kanban')
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   useEffect(() => {
     if (profile?.id) carregarLeads()
@@ -103,7 +232,6 @@ export default function CRM() {
       : await supabase.from('leads').insert(payload)
 
     if (result.error) {
-      console.error('Erro ao salvar lead:', result.error)
       alert(`Erro ao salvar lead: ${result.error.message}`)
       return
     }
@@ -120,7 +248,6 @@ export default function CRM() {
     const { error } = await supabase.from('leads').delete().eq('id', id)
 
     if (error) {
-      console.error('Erro ao excluir lead:', error)
       alert(`Erro ao excluir lead: ${error.message}`)
       return
     }
@@ -135,12 +262,57 @@ export default function CRM() {
       .eq('id', id)
 
     if (error) {
-      console.error('Erro ao mudar status:', error)
       alert(`Erro ao mudar status: ${error.message}`)
       return
     }
 
-    carregarLeads()
+    setLeads((prev) =>
+      prev.map((lead) => (lead.id === id ? { ...lead, status } : lead))
+    )
+  }
+
+  async function converterPaciente(lead) {
+    if (!confirm(`Converter ${lead.nome} em paciente?`)) return
+
+    const { data, error } = await supabase
+      .from('pacientes')
+      .insert({
+        nome_completo: lead.nome,
+        email: lead.email || null,
+        telefone: lead.telefone || null,
+        status: 'ativo',
+        profissional_id: profile.id,
+        endereco: [lead.cidade, lead.estado].filter(Boolean).join(' / ') || null,
+        valor_sessao_padrao: lead.valor_estimado || null,
+        observacoes_gerais: `Convertido automaticamente do CRM. Origem: ${lead.origem || 'Não informada'}. Observações: ${lead.observacoes || 'Sem observações.'}`,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      alert(`Erro ao converter lead: ${error.message}`)
+      return
+    }
+
+    await supabase.from('leads').delete().eq('id', lead.id)
+
+    setLeads((prev) => prev.filter((item) => item.id !== lead.id))
+    navigate(`/pacientes/${data.id}`)
+  }
+
+  function handleDragEnd(event) {
+    const { active, over } = event
+
+    if (!over) return
+
+    const leadId = active.id
+    const novoStatus = over.id
+
+    const lead = leads.find((item) => item.id === leadId)
+
+    if (!lead || lead.status === novoStatus) return
+
+    mudarStatus(leadId, novoStatus)
   }
 
   const leadsFiltrados = leads.filter((lead) => {
@@ -160,6 +332,10 @@ export default function CRM() {
     (acc, lead) => acc + Number(lead.valor_estimado || 0),
     0
   )
+
+  const fechados = leads.filter((l) => l.status === 'fechou').length
+  const perdidos = leads.filter((l) => l.status === 'perdido').length
+  const taxaConversao = leads.length > 0 ? ((fechados / leads.length) * 100).toFixed(1) : '0.0'
 
   function fmt(valor) {
     return `R$ ${Number(valor).toFixed(2).replace('.', ',')}`
@@ -181,26 +357,29 @@ export default function CRM() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         <div className="card">
-          <p className="text-sm text-graphite-500">Leads cadastrados</p>
+          <p className="text-sm text-graphite-500">Leads ativos</p>
           <p className="text-2xl font-semibold text-graphite-900">
             {leadsFiltrados.length}
           </p>
         </div>
 
         <div className="card">
-          <p className="text-sm text-graphite-500">Valor estimado</p>
+          <p className="text-sm text-graphite-500">Valor do pipeline</p>
           <p className="text-2xl font-semibold text-graphite-900">
             {fmt(totalEstimado)}
           </p>
         </div>
 
         <div className="card">
-          <p className="text-sm text-graphite-500">Fechados</p>
-          <p className="text-2xl font-semibold text-graphite-900">
-            {leads.filter((l) => l.status === 'fechou').length}
-          </p>
+          <p className="text-sm text-graphite-500">Perdidos</p>
+          <p className="text-2xl font-semibold text-graphite-900">{perdidos}</p>
+        </div>
+
+        <div className="card">
+          <p className="text-sm text-graphite-500">Conversão</p>
+          <p className="text-2xl font-semibold text-graphite-900">{taxaConversao}%</p>
         </div>
       </div>
 
@@ -247,94 +426,21 @@ export default function CRM() {
           <p className="text-sm text-graphite-300">Carregando leads...</p>
         </div>
       ) : visualizacao === 'kanban' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {statusOptions.map((coluna) => {
-            const leadsDaColuna = leadsFiltrados.filter(
-              (lead) => lead.status === coluna.value
-            )
-
-            const totalColuna = leadsDaColuna.reduce(
-              (acc, lead) => acc + Number(lead.valor_estimado || 0),
-              0
-            )
-
-            return (
-              <div key={coluna.value} className="card min-h-[420px]">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold text-graphite-900">
-                      {coluna.label}
-                    </h3>
-                    <p className="text-xs text-graphite-300">
-                      {leadsDaColuna.length} lead(s) · {fmt(totalColuna)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {leadsDaColuna.length === 0 ? (
-                    <p className="text-xs text-graphite-300">
-                      Nenhum lead nesta etapa.
-                    </p>
-                  ) : (
-                    leadsDaColuna.map((lead) => (
-                      <div
-                        key={lead.id}
-                        className="bg-cream-50 border border-cream-200 rounded-xl p-3"
-                      >
-                        <div className="flex justify-between gap-2">
-                          <div>
-                            <p className="font-medium text-graphite-900">
-                              {lead.nome}
-                            </p>
-                            <p className="text-xs text-graphite-500 mt-1">
-                              {lead.telefone || 'Sem telefone'}
-                            </p>
-                            <p className="text-xs text-graphite-300 mt-1">
-                              {lead.origem || 'Sem origem'}
-                            </p>
-                          </div>
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => abrirEditar(lead)}
-                              className="text-graphite-300 hover:text-rose-700"
-                            >
-                              <Pencil size={15} />
-                            </button>
-
-                            <button
-                              onClick={() => excluirLead(lead.id)}
-                              className="text-graphite-300 hover:text-rose-700"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </div>
-
-                        <p className="font-semibold text-graphite-900 mt-3">
-                          {fmt(lead.valor_estimado)}
-                        </p>
-
-                        <select
-                          className="input mt-3 text-xs"
-                          value={lead.status}
-                          onChange={(e) => mudarStatus(lead.id, e.target.value)}
-                        >
-                          {statusOptions.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {statusOptions.map((coluna) => (
+              <ColunaKanban
+                key={coluna.value}
+                coluna={coluna}
+                leads={leadsFiltrados.filter((lead) => lead.status === coluna.value)}
+                fmt={fmt}
+                abrirEditar={abrirEditar}
+                excluirLead={excluirLead}
+                converterPaciente={converterPaciente}
+              />
+            ))}
+          </div>
+        </DndContext>
       ) : (
         <div className="card">
           {leadsFiltrados.length === 0 ? (
@@ -349,12 +455,10 @@ export default function CRM() {
                   <div>
                     <p className="font-medium text-graphite-900">{lead.nome}</p>
                     <p className="text-sm text-graphite-500">
-                      {lead.telefone || 'Sem telefone'} ·{' '}
-                      {lead.origem || 'Sem origem'}
+                      {lead.telefone || 'Sem telefone'} · {lead.origem || 'Sem origem'}
                     </p>
                     <p className="text-xs text-graphite-300 mt-1">
-                      {lead.cidade || 'Cidade não informada'} /{' '}
-                      {lead.estado || 'UF'}
+                      {lead.cidade || 'Cidade não informada'} / {lead.estado || 'UF'}
                     </p>
                   </div>
 
@@ -364,10 +468,16 @@ export default function CRM() {
                         {fmt(lead.valor_estimado)}
                       </p>
                       <span className="text-xs px-2 py-1 rounded-full bg-cream-200 text-graphite-700">
-                        {statusOptions.find((s) => s.value === lead.status)
-                          ?.label ?? lead.status}
+                        {statusOptions.find((s) => s.value === lead.status)?.label ?? lead.status}
                       </span>
                     </div>
+
+                    <button
+                      onClick={() => converterPaciente(lead)}
+                      className="text-sage-500 hover:text-sage-700 text-xs font-medium"
+                    >
+                      Converter
+                    </button>
 
                     <button
                       onClick={() => abrirEditar(lead)}
