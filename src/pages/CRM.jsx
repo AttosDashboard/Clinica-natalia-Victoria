@@ -33,6 +33,7 @@ export default function CRM() {
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState(formInicial)
   const [carregando, setCarregando] = useState(true)
+  const [visualizacao, setVisualizacao] = useState('kanban')
 
   useEffect(() => {
     if (profile?.id) carregarLeads()
@@ -97,18 +98,9 @@ export default function CRM() {
       profissional_id: profile.id,
     }
 
-    let result
-
-    if (editando) {
-      result = await supabase
-        .from('leads')
-        .update(payload)
-        .eq('id', editando.id)
-    } else {
-      result = await supabase
-        .from('leads')
-        .insert(payload)
-    }
+    const result = editando
+      ? await supabase.from('leads').update(payload).eq('id', editando.id)
+      : await supabase.from('leads').insert(payload)
 
     if (result.error) {
       console.error('Erro ao salvar lead:', result.error)
@@ -125,14 +117,26 @@ export default function CRM() {
   async function excluirLead(id) {
     if (!confirm('Excluir este lead?')) return
 
-    const { error } = await supabase
-      .from('leads')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.from('leads').delete().eq('id', id)
 
     if (error) {
       console.error('Erro ao excluir lead:', error)
       alert(`Erro ao excluir lead: ${error.message}`)
+      return
+    }
+
+    carregarLeads()
+  }
+
+  async function mudarStatus(id, status) {
+    const { error } = await supabase
+      .from('leads')
+      .update({ status })
+      .eq('id', id)
+
+    if (error) {
+      console.error('Erro ao mudar status:', error)
+      alert(`Erro ao mudar status: ${error.message}`)
       return
     }
 
@@ -162,7 +166,7 @@ export default function CRM() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-display text-3xl text-graphite-900">CRM</h1>
@@ -200,66 +204,191 @@ export default function CRM() {
         </div>
       </div>
 
-      <div className="card mb-6">
-        <div className="flex items-center gap-2">
-          <Search size={18} className="text-graphite-300" />
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, telefone, e-mail, origem, cidade ou estado..."
-            className="w-full bg-transparent outline-none text-sm"
-          />
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="card flex-1">
+          <div className="flex items-center gap-2">
+            <Search size={18} className="text-graphite-300" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome, telefone, e-mail, origem, cidade ou estado..."
+              className="w-full bg-transparent outline-none text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="flex bg-cream-100 rounded-xl p-1">
+          <button
+            onClick={() => setVisualizacao('kanban')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              visualizacao === 'kanban'
+                ? 'bg-white text-rose-700 shadow-sm'
+                : 'text-graphite-500'
+            }`}
+          >
+            Kanban
+          </button>
+
+          <button
+            onClick={() => setVisualizacao('lista')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              visualizacao === 'lista'
+                ? 'bg-white text-rose-700 shadow-sm'
+                : 'text-graphite-500'
+            }`}
+          >
+            Lista
+          </button>
         </div>
       </div>
 
-      <div className="card">
-        {carregando ? (
+      {carregando ? (
+        <div className="card">
           <p className="text-sm text-graphite-300">Carregando leads...</p>
-        ) : leadsFiltrados.length === 0 ? (
-          <p className="text-sm text-graphite-300">Nenhum lead cadastrado.</p>
-        ) : (
-          <div className="divide-y divide-cream-100">
-            {leadsFiltrados.map((lead) => (
-              <div key={lead.id} className="py-4 flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium text-graphite-900">{lead.nome}</p>
-                  <p className="text-sm text-graphite-500">
-                    {lead.telefone || 'Sem telefone'} · {lead.origem || 'Sem origem'}
-                  </p>
-                  <p className="text-xs text-graphite-300 mt-1">
-                    {lead.cidade || 'Cidade não informada'} / {lead.estado || 'UF'}
-                  </p>
+        </div>
+      ) : visualizacao === 'kanban' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          {statusOptions.map((coluna) => {
+            const leadsDaColuna = leadsFiltrados.filter(
+              (lead) => lead.status === coluna.value
+            )
+
+            const totalColuna = leadsDaColuna.reduce(
+              (acc, lead) => acc + Number(lead.valor_estimado || 0),
+              0
+            )
+
+            return (
+              <div key={coluna.value} className="card min-h-[420px]">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="font-semibold text-graphite-900">
+                      {coluna.label}
+                    </h3>
+                    <p className="text-xs text-graphite-300">
+                      {leadsDaColuna.length} lead(s) · {fmt(totalColuna)}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="font-medium text-graphite-900">
-                      {fmt(lead.valor_estimado)}
+                <div className="space-y-3">
+                  {leadsDaColuna.length === 0 ? (
+                    <p className="text-xs text-graphite-300">
+                      Nenhum lead nesta etapa.
                     </p>
-                    <span className="text-xs px-2 py-1 rounded-full bg-cream-200 text-graphite-700">
-                      {statusOptions.find((s) => s.value === lead.status)?.label ?? lead.status}
-                    </span>
-                  </div>
+                  ) : (
+                    leadsDaColuna.map((lead) => (
+                      <div
+                        key={lead.id}
+                        className="bg-cream-50 border border-cream-200 rounded-xl p-3"
+                      >
+                        <div className="flex justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-graphite-900">
+                              {lead.nome}
+                            </p>
+                            <p className="text-xs text-graphite-500 mt-1">
+                              {lead.telefone || 'Sem telefone'}
+                            </p>
+                            <p className="text-xs text-graphite-300 mt-1">
+                              {lead.origem || 'Sem origem'}
+                            </p>
+                          </div>
 
-                  <button
-                    onClick={() => abrirEditar(lead)}
-                    className="text-graphite-300 hover:text-rose-700"
-                  >
-                    <Pencil size={16} />
-                  </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => abrirEditar(lead)}
+                              className="text-graphite-300 hover:text-rose-700"
+                            >
+                              <Pencil size={15} />
+                            </button>
 
-                  <button
-                    onClick={() => excluirLead(lead.id)}
-                    className="text-graphite-300 hover:text-rose-700"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                            <button
+                              onClick={() => excluirLead(lead.id)}
+                              className="text-graphite-300 hover:text-rose-700"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="font-semibold text-graphite-900 mt-3">
+                          {fmt(lead.valor_estimado)}
+                        </p>
+
+                        <select
+                          className="input mt-3 text-xs"
+                          value={lead.status}
+                          onChange={(e) => mudarStatus(lead.id, e.target.value)}
+                        >
+                          {statusOptions.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="card">
+          {leadsFiltrados.length === 0 ? (
+            <p className="text-sm text-graphite-300">Nenhum lead cadastrado.</p>
+          ) : (
+            <div className="divide-y divide-cream-100">
+              {leadsFiltrados.map((lead) => (
+                <div
+                  key={lead.id}
+                  className="py-4 flex items-center justify-between gap-4"
+                >
+                  <div>
+                    <p className="font-medium text-graphite-900">{lead.nome}</p>
+                    <p className="text-sm text-graphite-500">
+                      {lead.telefone || 'Sem telefone'} ·{' '}
+                      {lead.origem || 'Sem origem'}
+                    </p>
+                    <p className="text-xs text-graphite-300 mt-1">
+                      {lead.cidade || 'Cidade não informada'} /{' '}
+                      {lead.estado || 'UF'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="font-medium text-graphite-900">
+                        {fmt(lead.valor_estimado)}
+                      </p>
+                      <span className="text-xs px-2 py-1 rounded-full bg-cream-200 text-graphite-700">
+                        {statusOptions.find((s) => s.value === lead.status)
+                          ?.label ?? lead.status}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => abrirEditar(lead)}
+                      className="text-graphite-300 hover:text-rose-700"
+                    >
+                      <Pencil size={16} />
+                    </button>
+
+                    <button
+                      onClick={() => excluirLead(lead.id)}
+                      className="text-graphite-300 hover:text-rose-700"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {modal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
@@ -328,7 +457,9 @@ export default function CRM() {
                 placeholder="Valor estimado"
                 type="number"
                 value={form.valor_estimado}
-                onChange={(e) => setForm({ ...form, valor_estimado: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, valor_estimado: e.target.value })
+                }
               />
 
               <select
@@ -347,7 +478,9 @@ export default function CRM() {
                 className="input"
                 type="date"
                 value={form.ultimo_contato}
-                onChange={(e) => setForm({ ...form, ultimo_contato: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, ultimo_contato: e.target.value })
+                }
               />
             </div>
 
@@ -363,7 +496,9 @@ export default function CRM() {
                 className="input min-h-20"
                 placeholder="Motivo da perda"
                 value={form.motivo_perda}
-                onChange={(e) => setForm({ ...form, motivo_perda: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, motivo_perda: e.target.value })
+                }
               />
             )}
 
