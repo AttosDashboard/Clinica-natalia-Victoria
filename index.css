@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta Clínica Natalia Victoria - bege, cinza, rose */
+  --color-cream-50: #FBF8F5;
+  --color-cream-100: #F6EFE8;
+  --color-cream-200: #EED5B7;
+  --color-cream-300: #E5C7A3;
+
+  --color-rose-50: #FBF1EF;
+  --color-rose-100: #F6CEC8;
+  --color-rose-300: #E7AFA8;
+  --color-rose-500: #D19793;
+  --color-rose-700: #B97A76;
+
+  --color-sage-100: #E5E3D6;
+  --color-sage-300: #CCC7AE;
+  --color-sage-500: #ABA690;
+
+  --color-graphite-300: #8A9090;
+  --color-graphite-500: #6B7170;
+  --color-graphite-700: #545855;
+  --color-graphite-900: #3A3D3B;
+}
+
+@layer base {
+  body {
+    @apply bg-cream-50 text-graphite-900 antialiased;
+    font-family: "Mont", "Poppins", system-ui, sans-serif;
+  }
+  h1, h2, h3, .font-display {
+    font-family: "Cormorant Garamond", serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-rose-500 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-rose-700 transition-colors;
+  }
+  .btn-secondary {
+    @apply bg-cream-100 text-graphite-700 px-5 py-2.5 rounded-xl font-medium hover:bg-cream-200 transition-colors;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-cream-200 p-6;
+  }
+  .input-field {
+    @apply w-full px-4 py-2.5 rounded-xl border border-cream-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 transition-shadow;
+  }
+}
