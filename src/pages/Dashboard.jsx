@@ -43,7 +43,7 @@ export default function Dashboard() {
         .order('data_inicio'),
       supabase
         .from('pagamentos')
-        ..select('valor, status')
+        .select('valor, status')
         .eq('profissional_id', profile.id)
         .gte('data_vencimento', startOfMonth(hoje).toISOString())
         .lte('data_vencimento', endOfMonth(hoje).toISOString()),
