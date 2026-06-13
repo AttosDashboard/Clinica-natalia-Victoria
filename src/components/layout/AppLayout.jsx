@@ -8,8 +8,9 @@ import {
   FileText,
   ClipboardList,
   Sparkles,
-  LogOut,
-  Heart
+Briefcase,
+LogOut,
+Heart
 } from 'lucide-react'
 
 const navItems = [
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/pacientes', label: 'Pacientes', icon: Users },
   { to: '/agenda', label: 'Agenda', icon: Calendar },
   { to: '/financeiro', label: 'Financeiro', icon: Wallet },
+  { to: '/crm', label: 'CRM', icon: Briefcase },
   { to: '/prontuarios', label: 'Prontuários', icon: FileText },
   { to: '/formularios', label: 'Forms e Anamnese', icon: ClipboardList },
   { to: '/assistente', label: 'Assistente IA', icon: Sparkles },

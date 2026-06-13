@@ -10,6 +10,7 @@ import Financeiro from './pages/Financeiro'
 import Prontuarios from './pages/Prontuarios'
 import Formularios from './pages/Formularios'
 import Assistente from './pages/Assistente'
+import CRM from './pages/CRM'
 
 function RotaProtegida({ children }) {
   const { user, loading } = useAuth()
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route path="pacientes/:id" element={<PacienteDetalhe />} />
         <Route path="agenda" element={<Agenda />} />
         <Route path="financeiro" element={<Financeiro />} />
+        <Route path="crm" element={<CRM />} />
         <Route path="prontuarios" element={<Prontuarios />} />
         <Route path="formularios" element={<Formularios />} />
         <Route path="assistente" element={<Assistente />} />
