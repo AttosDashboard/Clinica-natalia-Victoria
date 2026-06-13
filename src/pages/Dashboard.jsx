@@ -56,7 +56,9 @@ export default function Dashboard() {
     ])
 
     const aReceberMes = (pagamentosMes ?? []).reduce((acc, p) => acc + Number(p.valor), 0)
-
+const recebidoMes = (pagamentosMes ?? [])
+  .filter(p => p.status === 'pago')
+  .reduce((acc, p) => acc + Number(p.valor), 0)
     const mesAtual = hoje.getMonth()
     const diaAtual = hoje.getDate()
     const aniversariantes = (pacientesData ?? [])
@@ -72,12 +74,13 @@ export default function Dashboard() {
     )
 
     setStats({
-      pacientesAtivos: pacientesAtivos ?? 0,
-      sessoesHoje: (sessoesHojeData ?? []).filter(s => s.status !== 'bloqueio').length,
-      aReceberMes,
-      proximaSessao,
-      aniversariantes
-    })
+  pacientesAtivos: pacientesAtivos ?? 0,
+  sessoesHoje: (sessoesHojeData ?? []).filter(s => s.status !== 'bloqueio').length,
+  recebidoMes,
+  aReceberMes,
+  proximaSessao,
+  aniversariantes
+})
     setCarregando(false)
   }
 
@@ -93,7 +96,12 @@ export default function Dashboard() {
       valor: stats.sessoesHoje,
       icon: Calendar,
       cor: 'bg-sage-100 text-sage-500'
-    },
+    },{
+  label: 'Recebido este mês',
+  valor: `R$ ${stats.recebidoMes.toFixed(2).replace('.', ',')}`,
+  icon: Wallet,
+  cor: 'bg-sage-100 text-sage-500'
+},
     {
       label: 'A receber este mês',
       valor: `R$ ${stats.aReceberMes.toFixed(2).replace('.', ',')}`,
