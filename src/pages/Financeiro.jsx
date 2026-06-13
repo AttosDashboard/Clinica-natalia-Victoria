@@ -148,6 +148,9 @@ export default function Financeiro() {
 
   // Cálculos
   const receitaTotal = pagamentos.reduce((acc, p) => acc + Number(p.valor), 0)
+  const recebido = pagamentos
+  .filter(p => p.status === 'pago')
+  .reduce((acc, p) => acc + Number(p.valor), 0)
   const aReceber = pagamentos.filter(p => p.status !== 'pago').reduce((acc, p) => acc + Number(p.valor), 0)
   const despesaTotal = despesas.reduce((acc, d) => acc + Number(d.valor), 0)
   const despesaPaga = despesas.filter(d => d.status === 'pago').reduce((acc, d) => acc + Number(d.valor), 0)
@@ -184,12 +187,19 @@ export default function Financeiro() {
           cor="bg-rose-100 text-rose-700"
         />
         <CardResumo
-          label="Receitas no período"
-          valor={fmt(receitaTotal)}
-          sub={`${fmt(aReceber)} a receber`}
-          icon={TrendingUp}
-          cor="bg-sage-100 text-sage-500"
-        />
+  label="Recebido no período"
+  valor={fmt(recebido)}
+  sub="Pagamentos marcados como pagos"
+  icon={TrendingUp}
+  cor="bg-sage-100 text-sage-500"
+/>
+<CardResumo
+  label="A receber"
+  valor={fmt(aReceber)}
+  sub="Pagamentos pendentes"
+  icon={Wallet}
+  cor="bg-cream-200 text-graphite-700"
+/>
         <CardResumo
           label="Despesas previstas"
           valor={fmt(despesaTotal)}
