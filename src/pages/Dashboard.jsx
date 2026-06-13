@@ -98,13 +98,13 @@ const recebidoMes = (pagamentosMes ?? [])
       cor: 'bg-sage-100 text-sage-500'
     },{
   label: 'Recebido este mês',
-  valor: `R$ ${stats.recebidoMes.toFixed(2).replace('.', ',')}`,
+  valor: `R$ ${(stats.recebidoMes || 0).toFixed(2).replace('.', ',')}`,
   icon: Wallet,
   cor: 'bg-sage-100 text-sage-500'
 },
     {
       label: 'A receber este mês',
-      valor: `R$ ${stats.aReceberMes.toFixed(2).replace('.', ',')}`,
+     valor: `R$ ${(stats.aReceberMes || 0).toFixed(2).replace('.', ',')}`,
       icon: Wallet,
       cor: 'bg-cream-200 text-graphite-700'
     },
